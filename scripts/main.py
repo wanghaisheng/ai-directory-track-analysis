@@ -44,7 +44,20 @@ def aggregate_all_domains(domain_file, output_file):
     domains = read_domains(domain_file)
     all_url_details = []
     today = datetime.now().strftime('%Y-%m-%d')
+    progress_file = 'domain_progress.txt'
+    failed_file = 'failed_domains.txt'
+    # 读取已处理进度
+    processed_domains = set()
+    if os.path.exists(progress_file):
+        with open(progress_file, 'r', encoding='utf-8') as pf:
+            processed_domains = set([line.strip() for line in pf if line.strip()])
+    failed_domains = set()
+    if os.path.exists(failed_file):
+        with open(failed_file, 'r', encoding='utf-8') as ff:
+            failed_domains = set([line.strip() for line in ff if line.strip()])
     for domain in domains:
+        if domain in processed_domains:
+            continue
         sitemap_url = get_sitemap_url(domain)
         sitemap_urls_to_try = [sitemap_url]
         if not check_url_200(sitemap_url):
@@ -54,7 +67,13 @@ def aggregate_all_domains(domain_file, output_file):
                 sitemap_urls_to_try = robots_sitemaps
             else:
                 print(f"No sitemap found in robots.txt for {domain}")
+                failed_domains.add(domain)
+                with open(failed_file, 'a', encoding='utf-8') as ff:
+                    ff.write(domain + '\n')
+                with open(progress_file, 'a', encoding='utf-8') as pf:
+                    pf.write(domain + '\n')
                 continue
+        success = False
         for sitemap_url in sitemap_urls_to_try:
             print(f'Processing {sitemap_url}')
             try:
@@ -62,9 +81,16 @@ def aggregate_all_domains(domain_file, output_file):
                 for d in url_details:
                     d['domain'] = domain
                 all_url_details.extend(url_details)
+                success = True
                 break  # Only process the first working sitemap
             except Exception as e:
                 print(f'Failed to process {sitemap_url}: {e}')
+        if not success:
+            failed_domains.add(domain)
+            with open(failed_file, 'a', encoding='utf-8') as ff:
+                ff.write(domain + '\n')
+        with open(progress_file, 'a', encoding='utf-8') as pf:
+            pf.write(domain + '\n')
     # Save all results
     if all_url_details:
         fieldnames = ['domain', 'loc', 'lastmodified', 'added_date']

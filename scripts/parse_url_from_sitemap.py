@@ -7,6 +7,24 @@ from datetime import datetime
 import os
 import csv
 from collections import deque
+import time
+
+# Retry decorator for HTTP requests
+def retry_on_exception(max_retries=3, delay=2, exceptions=(requests.exceptions.RequestException,)):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    logging.warning(f"Attempt {attempt+1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        time.sleep(delay)
+                    else:
+                        logging.error(f"Max retries reached for {func.__name__}")
+            return None
+        return wrapper
+    return decorator
 
 def setup_logging(log_file="sitemap_collector.log"):
     logging.basicConfig(
@@ -18,6 +36,7 @@ def setup_logging(log_file="sitemap_collector.log"):
         ]
     )
 
+@retry_on_exception(max_retries=3, delay=2)
 def fetch_xml(url):
     try:
         logging.info(f"Fetching XML: {url}")
@@ -30,6 +49,7 @@ def fetch_xml(url):
         logging.error(f"Failed to fetch XML: {url}, error: {e}")
     return None
 
+@retry_on_exception(max_retries=3, delay=2)
 def fetch_gzip_xml(url):
     try:
         logging.info(f"Fetching GZipped XML: {url}")
@@ -60,9 +80,9 @@ def extract_url_details_from_xml(xml_content):
                 details.append({'loc': loc, 'lastmodified': lastmod})
         return details
     except ET.ParseError as e:
-        logging.error(f"XML parse error (malformed XML): {e}")
+        logging.error(f"XML parse error (malformed XML): {e}. Skipping this XML block.")
     except Exception as e:
-        logging.error(f"XML parse error: {e}")
+        logging.error(f"XML parse error: {e}. Skipping this XML block.")
     return []
 
 def extract_links_from_xml(xml_content, tag="loc"):
@@ -71,9 +91,9 @@ def extract_links_from_xml(xml_content, tag="loc"):
         ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
         return [elem.text for elem in root.findall(f".//ns:{tag}", ns)]
     except ET.ParseError as e:
-        logging.error(f"XML parse error (malformed XML): {e}")
+        logging.error(f"XML parse error (malformed XML): {e}. Skipping this XML block.")
     except Exception as e:
-        logging.error(f"XML parse error: {e}")
+        logging.error(f"XML parse error: {e}. Skipping this XML block.")
     return []
 
 def is_gzip_url(url):
