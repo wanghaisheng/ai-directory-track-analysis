@@ -44,8 +44,11 @@ def aggregate_all_domains(domain_file, output_file):
     domains = read_domains(domain_file)
     all_url_details = []
     today = datetime.now().strftime('%Y-%m-%d')
-    progress_file = 'domain_progress.txt'
-    failed_file = 'failed_domains.txt'
+    date_folder = f"results_{today}"
+    if not os.path.exists(date_folder):
+        os.makedirs(date_folder)
+    progress_file = os.path.join(date_folder, f'domain_progress_{today}.txt')
+    failed_file = os.path.join(date_folder, f'failed_domains_{today}.txt')
     # 读取已处理进度
     processed_domains = set()
     if os.path.exists(progress_file):
@@ -94,18 +97,23 @@ def aggregate_all_domains(domain_file, output_file):
     # Save all results
     if all_url_details:
         fieldnames = ['domain', 'loc', 'lastmodified', 'added_date']
-        with open(output_file, 'w', encoding='utf-8', newline='') as f:
+        output_file_with_date = os.path.join(date_folder, f'all_domains_url_details_{today}.csv')
+        with open(output_file_with_date, 'w', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             for d in all_url_details:
                 writer.writerow(d)
-        print(f"Aggregated {len(all_url_details)} URLs from {len(domains)} domains. Saved to {output_file}")
+        print(f"Aggregated {len(all_url_details)} URLs from {len(domains)} domains. Saved to {output_file_with_date}")
     else:
         print("No URLs found.")
 
 def main():
     domain_file = 'domainlist.csv'
-    output_file = 'all_domains_url_details.csv'
+    today = datetime.now().strftime('%Y-%m-%d')
+    date_folder = f"results_{today}"
+    if not os.path.exists(date_folder):
+        os.makedirs(date_folder)
+    output_file = os.path.join(date_folder, f'all_domains_url_details_{today}.csv')
     aggregate_all_domains(domain_file, output_file)
 
 if __name__ == '__main__':
