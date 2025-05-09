@@ -18,7 +18,7 @@ const baseDir = path.dirname(__dirname);
 
 
 const baseUrl = config.baseUrl || 'https://default-url.com';
-const ignoreFolders = ['node_modules','template', 'assets', 'temp'];
+const ignoreFolders = ['node_modules','template', 'assets', 'temp','docs'];
 
 function listHtmlFiles(dir) {
     return fs.readdirSync(dir).reduce((files, file) => {
@@ -76,13 +76,12 @@ allHtmlFiles.forEach(file => {
     let loc;
     
     if (fileWithoutExtension.endsWith('index')) {
-        loc = `/${fileWithoutExtension.split('/').slice(0, -1).join('/')}`;
-        // Skip if it's the root path (already added)
-        if (loc === '/') {
-            return;
-        }
+        // For index pages, remove 'index' and ensure no trailing slash (except root)
+        const pathParts = fileWithoutExtension.split('/').slice(0, -1);
+        loc = pathParts.length === 0 ? '/' : `/${pathParts.join('/')}`;
     } else {
-        loc = `/${fileWithoutExtension}`;
+        // For non-index pages, ensure no trailing slash
+        loc = `/${fileWithoutExtension}`.replace(/\/+$/, '');
     }
     
     // Only add if URL doesn't exist or has a newer modification date
@@ -102,12 +101,17 @@ const sitemap = Array.from(urlMap.values());
 // Generate XML with proper formatting and lastmod dates
 const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemap.map(item => `    <url>
-        <loc>${baseUrl}${item.loc}</loc>
+${sitemap.map(item => {
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+    const cleanLoc = item.loc === '/' ? '' : item.loc;
+    
+    return `    <url>
+        <loc>${cleanBaseUrl}${cleanLoc}</loc>
         <lastmod>${item.lastmod}</lastmod>
         <changefreq>${item.changefreq}</changefreq>
         <priority>${item.priority}</priority>
-    </url>`).join('\n')}
+    </url>`;
+}).join('\n')}
 </urlset>`;
 
 // Always overwrite sitemap.xml
@@ -118,12 +122,64 @@ console.log(`Sitemap has been generated and saved to ${sitemapPath}`);
 const robotsbasePath = path.dirname(__dirname);
 
 // Always generate robots.txt (overwrite if exists)
-const robotsPath = path.join(robotsbasePath, 'robots.txt');
-const robotsContent = `User-agent: *
-Allow: /
+// Modify the robots.txt generation part
+const robotsContent = [];
 
-Sitemap: ${baseUrl}/sitemap.xml`;
-fs.writeFileSync(robotsPath, robotsContent);
+// Add allowed bots
+if (config.robots?.allowedBots) {
+    config.robots.allowedBots.forEach(bot => {
+        robotsContent.push(`User-agent: ${bot}`);
+    });
+    robotsContent.push('Allow: /\n');
+}
+
+// Add blocked bots
+if (config.robots?.blockedBots) {
+    config.robots.blockedBots.forEach(bot => {
+        robotsContent.push(`User-agent: ${bot}`);
+    });
+    robotsContent.push('Disallow: /\n');
+}
+
+// --- AI Scraper bots special handling ---
+const aiRobotsPath = path.join(__dirname, 'ai-robots.txt');
+let aiBots = [];
+if (fs.existsSync(aiRobotsPath)) {
+    const aiLines = fs.readFileSync(aiRobotsPath, 'utf-8').split(/\r?\n/);
+    aiBots = aiLines
+        .map(line => line.trim())
+        .filter(line => line.toLowerCase().startsWith('user-agent:'))
+        .map(line => line.split(':')[1].trim())
+        .filter(Boolean);
+}
+// 获取 config 里已允许的 bot（忽略大小写）
+const allowedBotsSet = new Set(
+    (config.robots?.allowedBots || []).map(bot => bot.toLowerCase())
+);
+if (aiBots.length > 0) {
+    aiBots.forEach(bot => {
+        if (allowedBotsSet.has(bot.toLowerCase())) return; // 如果已允许则跳过
+        robotsContent.push(`User-agent: ${bot}`);
+        robotsContent.push('Allow: /llms.txt');
+        robotsContent.push('Disallow: /\n');
+    });
+}
+// --- End AI Scraper bots special handling ---
+
+// Add general rules
+robotsContent.push('User-agent: *');
+if (config.robots?.allowedPaths) {
+    config.robots.allowedPaths.forEach(path => {
+        robotsContent.push(`Allow: ${path}`);
+    });
+}
+
+// Add sitemap
+robotsContent.push(`Sitemap: ${baseUrl}/sitemap.xml`);
+
+// Write robots.txt
+const robotsPath = path.join(robotsbasePath, 'robots.txt');
+fs.writeFileSync(robotsPath, robotsContent.join('\n'));
 console.log(`robots.txt has been ${fs.existsSync(robotsPath) ? 'overwritten' : 'generated'} at ${robotsPath}`);
 
 // Generate CSV with lastmod dates
