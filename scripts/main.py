@@ -99,13 +99,26 @@ def aggregate_all_domains(domain_file, output_file):
         fieldnames = [
             # 'domain', 
             'loc', 'lastmodified', 'added_date']
-        output_file_with_date = os.path.join(date_folder, f'all_domains_url_details_{today}.csv')
-        with open(output_file_with_date, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            for d in all_url_details:
-                writer.writerow(d)
-        print(f"Aggregated {len(all_url_details)} URLs from {len(domains)} domains. Saved to {output_file_with_date}")
+        output_file_with_date_base = os.path.join(date_folder, f'all_domains_url_details_{today}')
+        max_size = 90 * 1024 * 1024  # 90MB
+        file_index = 1
+        output_file_with_date = f"{output_file_with_date_base}_part{file_index}.csv"
+        f = open(output_file_with_date, 'w', encoding='utf-8', newline='')
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        current_size = f.tell()
+        for i, d in enumerate(all_url_details):
+            writer.writerow(d)
+            # 检查文件大小，超过90M则切换新文件
+            if f.tell() >= max_size:
+                f.close()
+                file_index += 1
+                output_file_with_date = f"{output_file_with_date_base}_part{file_index}.csv"
+                f = open(output_file_with_date, 'w', encoding='utf-8', newline='')
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+        f.close()
+        print(f"Aggregated {len(all_url_details)} URLs from {len(domains)} domains. Saved to {output_file_with_date_base}_part*.csv")
     else:
         print("No URLs found.")
 
