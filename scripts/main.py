@@ -96,7 +96,9 @@ def aggregate_all_domains(domain_file, output_file):
             pf.write(domain + '\n')
     # Save all results
     if all_url_details:
-        fieldnames = ['domain', 'loc', 'lastmodified', 'added_date']
+        fieldnames = [
+            # 'domain', 
+            'loc', 'lastmodified', 'added_date']
         output_file_with_date = os.path.join(date_folder, f'all_domains_url_details_{today}.csv')
         with open(output_file_with_date, 'w', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
