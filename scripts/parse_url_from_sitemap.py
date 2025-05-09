@@ -24,9 +24,11 @@ def fetch_xml(url):
         response = requests.get(url)
         response.raise_for_status()
         return response.text
+    except requests.exceptions.HTTPError as e:
+        logging.error(f"HTTP error while fetching XML: {url}, status: {getattr(e.response, 'status_code', None)}, error: {e}")
     except Exception as e:
         logging.error(f"Failed to fetch XML: {url}, error: {e}")
-        return None
+    return None
 
 def fetch_gzip_xml(url):
     try:
@@ -35,9 +37,11 @@ def fetch_gzip_xml(url):
         response.raise_for_status()
         with gzip.GzipFile(fileobj=BytesIO(response.content)) as f:
             return f.read().decode('utf-8')
+    except requests.exceptions.HTTPError as e:
+        logging.error(f"HTTP error while fetching GZipped XML: {url}, status: {getattr(e.response, 'status_code', None)}, error: {e}")
     except Exception as e:
         logging.error(f"Failed to fetch GZipped XML: {url}, error: {e}")
-        return None
+    return None
 
 def extract_url_details_from_xml(xml_content):
     """
@@ -55,18 +59,22 @@ def extract_url_details_from_xml(xml_content):
             if loc:
                 details.append({'loc': loc, 'lastmodified': lastmod})
         return details
+    except ET.ParseError as e:
+        logging.error(f"XML parse error (malformed XML): {e}")
     except Exception as e:
         logging.error(f"XML parse error: {e}")
-        return []
+    return []
 
 def extract_links_from_xml(xml_content, tag="loc"):
     try:
         root = ET.fromstring(xml_content)
         ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
         return [elem.text for elem in root.findall(f".//ns:{tag}", ns)]
+    except ET.ParseError as e:
+        logging.error(f"XML parse error (malformed XML): {e}")
     except Exception as e:
         logging.error(f"XML parse error: {e}")
-        return []
+    return []
 
 def is_gzip_url(url):
     return url.lower().endswith('.gz')
