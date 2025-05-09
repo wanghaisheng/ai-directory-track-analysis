@@ -81,8 +81,8 @@ def aggregate_all_domains(domain_file, output_file):
             print(f'Processing {sitemap_url}')
             try:
                 url_details = collect_all_url_details_from_sitemap(sitemap_url, today=today)
-                for d in url_details:
-                    d['domain'] = domain
+                # for d in url_details:
+                    # d['domain'] = domain
                 all_url_details.extend(url_details)
                 success = True
                 break  # Only process the first working sitemap
