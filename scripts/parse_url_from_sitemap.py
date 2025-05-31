@@ -67,8 +67,18 @@ def extract_url_details_from_xml(xml_content):
     """
     提取每个<url>节点下的loc和lastmod，返回列表[{loc, lastmodified}]
     """
+    if not xml_content:
+        logging.warning("XML content is empty or None, skipping parsing.")
+        return []
     try:
         root = ET.fromstring(xml_content)
+    except ET.ParseError as e:
+        logging.error(f"Initial XML parse error (malformed XML): {e}. XML content might be invalid. Skipping this XML block.")
+        # Optionally log a snippet of the problematic XML if it's not too large
+        # logging.debug(f"Problematic XML (first 200 chars): {xml_content[:200]}")
+        return []
+    
+    try:
         ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
         details = []
         for url_elem in root.findall('.//ns:url', ns):
@@ -79,21 +89,26 @@ def extract_url_details_from_xml(xml_content):
             if loc:
                 details.append({'loc': loc, 'lastmodified': lastmod})
         return details
-    except ET.ParseError as e:
-        logging.error(f"XML parse error (malformed XML): {e}. Skipping this XML block.")
-    except Exception as e:
-        logging.error(f"XML parse error: {e}. Skipping this XML block.")
+    except Exception as e: # Catch other potential errors during element finding
+        logging.error(f"Error processing XML elements after initial parse: {e}. Skipping this XML block.")
     return []
 
 def extract_links_from_xml(xml_content, tag="loc"):
+    if not xml_content:
+        logging.warning("XML content is empty or None, skipping parsing.")
+        return []
     try:
         root = ET.fromstring(xml_content)
+    except ET.ParseError as e:
+        logging.error(f"Initial XML parse error (malformed XML): {e}. XML content might be invalid. Skipping this XML block.")
+        # logging.debug(f"Problematic XML (first 200 chars): {xml_content[:200]}")
+        return []
+
+    try:
         ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
         return [elem.text for elem in root.findall(f".//ns:{tag}", ns)]
-    except ET.ParseError as e:
-        logging.error(f"XML parse error (malformed XML): {e}. Skipping this XML block.")
-    except Exception as e:
-        logging.error(f"XML parse error: {e}. Skipping this XML block.")
+    except Exception as e: # Catch other potential errors during element finding
+        logging.error(f"Error processing XML elements after initial parse: {e}. Skipping this XML block.")
     return []
 
 def is_gzip_url(url):

@@ -1,15 +1,14 @@
 import os
 import csv
-import sys
 from datetime import datetime
 import requests
 import re
-# sys.path.append(os.path.join(os.path.dirname(__file__), 'scripts'))
+import glob # For finding file patterns
 from parse_url_from_sitemap import collect_all_url_details_from_sitemap
 
 def read_domains(domain_file):
     with open(domain_file, 'r', encoding='utf-8') as f:
-        return [line.strip() for line in f if line.strip()]
+        return [line.strip().replace('www.','') for line in f if line.strip()]
 
 def get_sitemap_url(domain):
     if domain.startswith('http://') or domain.startswith('https://'):
@@ -40,16 +39,19 @@ def get_robots_sitemaps(domain):
         pass
     return []
 
-def aggregate_all_domains(domain_file, output_file):
+def get_url_last_part(url):
+    url = url.split('?')[0].split('&')[0]
+    parts = url.rstrip('/').split('/')
+    return parts[-1] if parts else ''
+
+def aggregate_all_domains(domain_file):
     domains = read_domains(domain_file)
-    all_url_details = []
     today = datetime.now().strftime('%Y-%m-%d')
-    date_folder = f"results_{today}"
+    date_folder = f"results"
     if not os.path.exists(date_folder):
         os.makedirs(date_folder)
     progress_file = os.path.join(date_folder, f'domain_progress_{today}.txt')
     failed_file = os.path.join(date_folder, f'failed_domains_{today}.txt')
-    # 读取已处理进度
     processed_domains = set()
     if os.path.exists(progress_file):
         with open(progress_file, 'r', encoding='utf-8') as pf:
@@ -61,6 +63,8 @@ def aggregate_all_domains(domain_file, output_file):
     for domain in domains:
         if domain in processed_domains:
             continue
+        print(f"Processing {domain}")
+        domain_base_name = domain.replace('.', '_') # Used for consistent file naming
         sitemap_url = get_sitemap_url(domain)
         sitemap_urls_to_try = [sitemap_url]
         if not check_url_200(sitemap_url):
@@ -78,14 +82,91 @@ def aggregate_all_domains(domain_file, output_file):
                 continue
         success = False
         for sitemap_url in sitemap_urls_to_try:
-            print(f'Processing {sitemap_url}')
             try:
                 url_details = collect_all_url_details_from_sitemap(sitemap_url, today=today)
-                # for d in url_details:
-                    # d['domain'] = domain
-                all_url_details.extend(url_details)
+                urls = set([d['loc'] for d in url_details if 'loc' in d])
+                
+                # Path for the main "_all.csv" file which acts as the current/hot storage
+                domain_all_file_path = os.path.join(date_folder, f"{domain_base_name}_all.csv")
+                
+                existing_urls = set()
+                
+                # Read from the main _all.csv (current/hot data)
+                if os.path.exists(domain_all_file_path):
+                    try:
+                        with open(domain_all_file_path, 'r', encoding='utf-8') as f:
+                            reader = csv.reader(f)
+                            for row in reader:
+                                if row: # Ensure row is not empty
+                                    existing_urls.add(row[0])
+                    except Exception as e:
+                        print(f"Error reading existing URLs from {domain_all_file_path}: {e}")
+
+                # Read from part files (archived data)
+                part_file_pattern = os.path.join(date_folder, f"{domain_base_name}_all_part*.csv")
+                part_files = sorted(glob.glob(part_file_pattern))
+                for part_file in part_files:
+                    try:
+                        with open(part_file, 'r', encoding='utf-8') as f:
+                            reader = csv.reader(f)
+                            for row in reader:
+                                if row: # Ensure row is not empty
+                                    existing_urls.add(row[0])
+                    except Exception as e:
+                        print(f"Error reading existing URLs from part file {part_file}: {e}")
+
+                new_urls = urls - existing_urls
+                
+                # 追加新url到域名文件 (always domain_all_file_path, which is the "_all.csv")
+                if new_urls:
+                    try:
+                        with open(domain_all_file_path, 'a', encoding='utf-8', newline='') as f:
+                            writer = csv.writer(f)
+                            for url_to_add in sorted(list(new_urls)):
+                                writer.writerow([url_to_add])
+                    except Exception as e:
+                        print(f"Error appending new URLs to {domain_all_file_path}: {e}")
+                
+                # Check if domain_all_file_path (the "hot" _all.csv) needs to be archived due to size
+                max_file_size_bytes = 50 * 1024 * 1024  # 90MB
+                if os.path.exists(domain_all_file_path) and os.path.getsize(domain_all_file_path) > max_file_size_bytes:
+                    current_size_mb = os.path.getsize(domain_all_file_path) / (1024 * 1024)
+                    print(f"{domain_all_file_path} (size: {current_size_mb:.2f}MB) exceeds {max_file_size_bytes / (1024*1024):.0f}MB limit, archiving...")
+                    
+                    part_num = 1
+                    while True:
+                        new_part_file_path = os.path.join(date_folder, f"{domain_base_name}_all_part{part_num}.csv")
+                        if not os.path.exists(new_part_file_path):
+                            break
+                        part_num += 1
+                    
+                    try:
+                        print(f"Renaming {domain_all_file_path} to {new_part_file_path}")
+                        os.rename(domain_all_file_path, new_part_file_path)
+                    except Exception as e:
+                        print(f"Error renaming/archiving {domain_all_file_path} to {new_part_file_path}: {e}")
+
+                # 每日新增url文件
+                daily_new_file = os.path.join(date_folder, f"{domain_base_name}_new_{today}.csv")
+                if new_urls:
+                    with open(daily_new_file, 'w', encoding='utf-8', newline='') as f:
+                        writer = csv.writer(f)
+                        for url_item in sorted(list(new_urls)):
+                            writer.writerow([url_item])
+                else:
+                    open(daily_new_file, 'w', encoding='utf-8').close() # Create/clear the file
+
+                # 每日新增url最后一段文件
+                daily_lastpart_file = os.path.join(date_folder, f"{domain_base_name}_lastpart_{today}.csv")
+                if new_urls:
+                    with open(daily_lastpart_file, 'w', encoding='utf-8', newline='') as f:
+                        writer = csv.writer(f)
+                        for url_item in sorted(list(new_urls)):
+                            writer.writerow([get_url_last_part(url_item)])
+                else:
+                    open(daily_lastpart_file, 'w', encoding='utf-8').close() # Create/clear the file
                 success = True
-                break  # Only process the first working sitemap
+                break
             except Exception as e:
                 print(f'Failed to process {sitemap_url}: {e}')
         if not success:
@@ -94,42 +175,10 @@ def aggregate_all_domains(domain_file, output_file):
                 ff.write(domain + '\n')
         with open(progress_file, 'a', encoding='utf-8') as pf:
             pf.write(domain + '\n')
-    # Save all results
-    if all_url_details:
-        fieldnames = [
-            # 'domain', 
-            'loc', 'lastmodified', 'added_date']
-        output_file_with_date_base = os.path.join(date_folder, f'all_domains_url_details_{today}')
-        max_size = 90 * 1024 * 1024  # 90MB
-        file_index = 1
-        output_file_with_date = f"{output_file_with_date_base}_part{file_index}.csv"
-        f = open(output_file_with_date, 'w', encoding='utf-8', newline='')
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        current_size = f.tell()
-        for i, d in enumerate(all_url_details):
-            writer.writerow(d)
-            # 检查文件大小，超过90M则切换新文件
-            if f.tell() >= max_size:
-                f.close()
-                file_index += 1
-                output_file_with_date = f"{output_file_with_date_base}_part{file_index}.csv"
-                f = open(output_file_with_date, 'w', encoding='utf-8', newline='')
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-        f.close()
-        print(f"Aggregated {len(all_url_details)} URLs from {len(domains)} domains. Saved to {output_file_with_date_base}_part*.csv")
-    else:
-        print("No URLs found.")
 
 def main():
     domain_file = 'domainlist.csv'
-    today = datetime.now().strftime('%Y-%m-%d')
-    date_folder = f"results/{today}"
-    if not os.path.exists(date_folder):
-        os.makedirs(date_folder)
-    output_file = os.path.join(date_folder, f'all_domains_url_details_{today}.csv')
-    aggregate_all_domains(domain_file, output_file)
+    aggregate_all_domains(domain_file)
 
 if __name__ == '__main__':
     main()

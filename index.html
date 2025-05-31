@@ -53,6 +53,11 @@
   </script>
 
   <title>PC Simulator</title>
+  
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- ECharts for pie chart -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 
   <style>
     /* Global Styles */
@@ -123,10 +128,29 @@
 <body>
   <div class="mobile-container">
     <div class="content">
-      <p>Mobile Simulator Screen</p>
-      <p>PC Version: Adjusted for larger screens.</p>
+      <h2>AI目录报表</h2>
+      <div style="margin-bottom:16px;">
+        <label>选择域名：<select id="domainSelect"></select></label>
+        <label style="margin-left:16px;">选择日期：<select id="dateSelect"></select></label>
+        <button onclick="loadReport()">加载报表</button>
+      </div>
+      <div style="display:flex;gap:32px;justify-content:center;align-items:flex-start;flex-wrap:wrap;">
+        <div>
+          <h3>全部URL</h3>
+          <div style="max-height:300px;overflow:auto;"><table id="allUrlTable" border="1"><thead><tr><th>URL</th></tr></thead><tbody></tbody></table></div>
+        </div>
+        <div>
+          <h3>每日新增URL</h3>
+          <div style="max-height:300px;overflow:auto;"><table id="newUrlTable" border="1"><thead><tr><th>URL</th></tr></thead><tbody></tbody></table></div>
+        </div>
+        <div>
+          <h3>lastpart词频饼图</h3>
+          <div id="pieChart" style="width:400px;height:300px;"></div>
+        </div>
+      </div>
     </div>
   </div>
+  <script src="report.js"></script>
 </body>
 
 </html>
